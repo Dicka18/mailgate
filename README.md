@@ -32,12 +32,12 @@ Turn any domain on Cloudflare into a private inbox for verification codes, magic
 
 ```mermaid
 flowchart LR
-  Sender["Auth Provider or App - OTP, Magic Link, Receipt"] -->|SMTP| CF["Cloudflare Email Routing - catch-all domain"]
-  CF -->|email handler| Worker["MailGate Worker - postal-mime, sanitizer, OTP"]
-  Worker -->|Strict allowlist check| D1[("Cloudflare D1 SQLite")]
-  Cron["Daily Cron Trigger - 03:00 UTC"] -->|Purge expired mail| D1
-  Browser["Web Inbox and Admin UI - Sandboxed iframe"] <-->|HTTPS JSON API| Worker
-  E2E["Playwright, CLI, MCP - mailgate-sdk"] <-->|GET /api/inbox/latest-otp| Worker
+  Sender["Auth Provider or App"] -->|SMTP| CF["Cloudflare Email Routing"]
+  CF -->|email handler| Worker["MailGate Worker"]
+  Worker -->|Allowlist and OTP ingest| D1[("Cloudflare D1 SQLite")]
+  Cron["Daily Cron Trigger"] -->|Purge expired mail| D1
+  Browser["Web Inbox and Admin UI"] -->|HTTPS JSON API| Worker
+  E2E["Playwright, CLI, and MCP"] -->|Poll OTP and links| Worker
 ```
 
 ---
