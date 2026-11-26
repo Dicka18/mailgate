@@ -1,0 +1,10 @@
+node_modules
+.wrangler
+.git
+docs
+public
+src
+tests
+migrations
+cloudflare-bridge
+scripts
