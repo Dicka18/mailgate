@@ -2,11 +2,10 @@
 
 [![CI](https://github.com/Dicka18/mailgate/actions/workflows/ci.yml/badge.svg)](https://github.com/Dicka18/mailgate/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/Dicka18/mailgate/actions/workflows/codeql.yml/badge.svg)](https://github.com/Dicka18/mailgate/actions/workflows/codeql.yml)
-[![npm version](https://img.shields.io/npm/v/mailgate-sdk?color=0f766e&label=mailgate-sdk)](https://www.npmjs.com/package/mailgate-sdk)
-[![npm downloads](https://img.shields.io/npm/dm/mailgate-sdk?color=0f766e)](https://www.npmjs.com/package/mailgate-sdk)
-[![License: MIT](https://img.shields.io/badge/License-MIT-0f766e.svg)](./LICENSE)
-[![Release](https://img.shields.io/github/v/release/Dicka18/mailgate?color=0f766e)](https://github.com/Dicka18/mailgate/releases)
 [![Dicka18/mailgate MCP server](https://glama.ai/mcp/servers/Dicka18/mailgate/badges/score.svg)](https://glama.ai/mcp/servers/Dicka18/mailgate)
+[![npm mailgate-sdk](https://img.shields.io/badge/npm-mailgate--sdk%20v1.1.1-0f766e.svg)](https://www.npmjs.com/package/mailgate-sdk)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-live-0f766e.svg)](https://registry.modelcontextprotocol.io/v0.1/servers?search=Dicka18/mailgate)
+[![License: MIT](https://img.shields.io/badge/License-MIT-0f766e.svg)](./LICENSE)
 
 Self-hosted, receive-only email and OTP inbox running on Cloudflare Email Routing, Workers, and D1.
 
@@ -33,12 +32,12 @@ Turn any domain on Cloudflare into a private inbox for verification codes, magic
 
 ```mermaid
 flowchart LR
-  Sender["Auth Provider / App<br/>(OTP, Magic Link, Receipt)"] -->|SMTP| CF["Cloudflare Email Routing<br/>(*@example.com)"]
-  CF -->|email() handler| Worker["MailGate Worker<br/>(postal-mime + sanitizer + OTP extractor)"]
-  Worker -->|Strict allowlist check| D1[("Cloudflare D1<br/>SQLite")]
-  Cron["Daily Cron Trigger<br/>(03:00 UTC)"] -->|Purge expired mail| D1
-  Browser["Web Inbox & Admin UI<br/>(Sandboxed iframe + Light/Dark)"] <-->|HTTPS JSON API| Worker
-  E2E["Playwright / Cypress / CI<br/>(mailgate-sdk)"] <-->|GET /api/inbox/latest-otp| Worker
+  Sender["Auth Provider or App - OTP, Magic Link, Receipt"] -->|SMTP| CF["Cloudflare Email Routing - catch-all domain"]
+  CF -->|email handler| Worker["MailGate Worker - postal-mime, sanitizer, OTP"]
+  Worker -->|Strict allowlist check| D1[("Cloudflare D1 SQLite")]
+  Cron["Daily Cron Trigger - 03:00 UTC"] -->|Purge expired mail| D1
+  Browser["Web Inbox and Admin UI - Sandboxed iframe"] <-->|HTTPS JSON API| Worker
+  E2E["Playwright, CLI, MCP - mailgate-sdk"] <-->|GET /api/inbox/latest-otp| Worker
 ```
 
 ---
