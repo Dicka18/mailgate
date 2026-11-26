@@ -29,6 +29,10 @@
       "types": "./playwright.d.ts",
       "import": "./playwright.mjs"
     },
+    "./cypress": {
+      "types": "./cypress.d.ts",
+      "import": "./cypress.mjs"
+    },
     "./mcp": {
       "import": "./mcp.mjs"
     }
@@ -38,6 +42,8 @@
     "index.d.ts",
     "playwright.mjs",
     "playwright.d.ts",
+    "cypress.mjs",
+    "cypress.d.ts",
     "cli.mjs",
     "mcp.mjs",
     "README.md",

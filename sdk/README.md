@@ -80,7 +80,39 @@ test('sign in with email OTP', async ({ page, mailgate }) => {
 
 ---
 
-## 3. Direct Client API (`MailGateClient`)
+## 3. Cypress Commands (`mailgate-sdk/cypress`)
+
+Register `cy.waitForOtp()` and `cy.waitForEmail()` in your Cypress support file. Set the MailGate URL in Cypress config or pass it directly:
+
+```js
+import { addMailGateCommands } from 'mailgate-sdk/cypress';
+
+addMailGateCommands(Cypress, {
+  baseUrl: Cypress.env('MAILGATE_URL'),
+  adminToken: Cypress.env('MAILGATE_ADMIN_TOKEN'),
+  defaultEmail: 'e2e-login@example.com',
+});
+```
+
+Use the command in a test and pass the same filters supported by `MailGateClient`:
+
+```js
+cy.get('[aria-label="Email"]').type('e2e-login@example.com');
+cy.get('button[type="submit"]').click();
+
+cy.waitForOtp({
+  since: new Date(Date.now() - 60_000),
+  sender: 'no-reply@example.com',
+  timeoutMs: 30_000,
+}).then(({ otpCode }) => {
+  cy.get('[aria-label="Verification code"]').type(otpCode);
+  cy.get('button[type="submit"]').click();
+});
+```
+
+Pass `email` to each command or set it once as `defaultEmail`. The `since`, `sender`, timeout and other inbox options are passed to the client. Cypress is provided by your test suite; this helper adds no SDK dependency.
+
+## 4. Direct Client API (`MailGateClient`)
 
 ```ts
 import { MailGateClient } from 'mailgate-sdk';
@@ -105,7 +137,7 @@ console.log(msg.verification_link);
 
 ---
 
-## 4. CLI Usage (CI Shell Scripts)
+## 5. CLI Usage (CI Shell Scripts)
 
 ```bash
 export MAILGATE_URL=https://mailgate.example.com

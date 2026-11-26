@@ -2,6 +2,20 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import test from 'node:test';
 import { createMailGateTest } from '../sdk/playwright.mjs';
+import { addMailGateCommands } from '../sdk/cypress.mjs';
+
+test('Cypress commands register OTP and email helpers and require a configured email', () => {
+  const commands = new Map();
+  const fakeCypress = {
+    env: (name) => ({ MAILGATE_URL: 'http://127.0.0.1' })[name],
+    Commands: { add: (name, command) => commands.set(name, command) },
+  };
+
+  addMailGateCommands(fakeCypress);
+
+  assert.deepEqual([...commands.keys()], ['waitForOtp', 'waitForEmail']);
+  assert.throws(() => commands.get('waitForOtp')(), /requires `email`/);
+});
 
 test('createMailGateTest wires mailgate fixture, clears inbox when requested, and injects `since`', async () => {
   let clearedEmail = '';
