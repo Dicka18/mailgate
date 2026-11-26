@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "mailgate": {
+      "command": "npx",
+      "args": ["-y", "mailgate-sdk@1.1.1", "mcp"],
+      "env": {
+        "MAILGATE_URL": "${MAILGATE_URL}"
+      }
+    }
+  }
+}

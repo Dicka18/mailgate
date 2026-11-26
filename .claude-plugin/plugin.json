@@ -1,0 +1,23 @@
+{
+  "name": "mailgate",
+  "version": "1.1.1",
+  "description": "Self-hosted receive-only OTP and magic-link email inbox on Cloudflare Email Routing, Workers, and D1 for Playwright E2E auth testing and Claude Code.",
+  "author": {
+    "name": "Dicka18",
+    "url": "https://github.com/Dicka18"
+  },
+  "homepage": "https://github.com/Dicka18/mailgate",
+  "repository": "https://github.com/Dicka18/mailgate",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "email",
+    "otp",
+    "magic-link",
+    "cloudflare-workers",
+    "cloudflare-d1",
+    "playwright",
+    "e2e-testing"
+  ],
+  "mcpServers": "./.mcp.json"
+}
