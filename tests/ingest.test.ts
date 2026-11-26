@@ -5,6 +5,8 @@ import {
   ingestRawEmail,
   isValidEmailFormat,
   normalizeEmailAddress,
+  parseAttachmentsJson,
+  summarizeAttachments,
 } from '../src/lib/email-ingest.ts';
 import { handlePublicApi } from '../src/routes/public.ts';
 import type { AllowedInboxRow, Env, MessageRow } from '../src/types.ts';
@@ -88,6 +90,7 @@ function createMockEnv(initialInboxes: Partial<AllowedInboxRow>[] = []): {
               otp_code: bindings[7] ? String(bindings[7]) : null,
               is_read: 0,
               received_at: String(bindings[8]),
+              attachments_json: bindings[9] == null ? null : String(bindings[9]),
             });
             return { meta: { changes: 1 } };
           }
@@ -173,4 +176,114 @@ test('ingestRawEmail parses RFC822 MIME, extracts OTP & link, and exposes them v
   assert.equal(json.otpCode, '628491');
   assert.equal(json.verificationLink, 'https://acme.dev/auth/verify?token=xyz987');
   assert.equal(json.message?.sender, 'auth@acme.dev');
+});
+
+function buildRawEmailWithAttachments(to: string): { raw: string; pdfSize: number; csvSize: number } {
+  const boundary = 'mailgate-test-mixed';
+  const pdfBytes = Buffer.from('%PDF-1.4\n% MailGate test invoice\n%%EOF\n', 'utf8');
+  const csvBytes = Buffer.from('item,amount\nwidget,42\n', 'utf8');
+  return {
+    raw: [
+      'From: "Acme Billing" <billing@acme.dev>',
+      `To: ${to}`,
+      'Subject: Your invoice INV-1001',
+      'MIME-Version: 1.0',
+      `Content-Type: multipart/mixed; boundary="${boundary}"`,
+      '',
+      `--${boundary}`,
+      'Content-Type: text/plain; charset="UTF-8"',
+      '',
+      'Your invoice is attached.',
+      '',
+      `--${boundary}`,
+      'Content-Type: application/pdf; name="INV-1001.pdf"',
+      'Content-Disposition: attachment; filename="INV-1001.pdf"',
+      'Content-Transfer-Encoding: base64',
+      '',
+      pdfBytes.toString('base64'),
+      '',
+      `--${boundary}`,
+      'Content-Type: text/csv',
+      'Content-Disposition: attachment; filename="line-items.csv"',
+      'Content-Transfer-Encoding: base64',
+      '',
+      csvBytes.toString('base64'),
+      '',
+      `--${boundary}--`,
+    ].join('\r\n'),
+    pdfSize: pdfBytes.byteLength,
+    csvSize: csvBytes.byteLength,
+  };
+}
+
+test('ingestRawEmail stores attachment metadata and GET /api/inbox/messages/:id exposes it', async () => {
+  const { env, messages } = createMockEnv([{ email_address: 'billing@example.com', is_active: 1 }]);
+  const { raw, pdfSize, csvSize } = buildRawEmailWithAttachments('billing@example.com');
+
+  const stored = await ingestRawEmail(env, raw, 'billing@example.com', 'billing@acme.dev');
+  assert.equal(stored.stored, true);
+  assert.ok(stored.id);
+
+  const expected = [
+    { filename: 'INV-1001.pdf', mimeType: 'application/pdf', size: pdfSize },
+    { filename: 'line-items.csv', mimeType: 'text/csv', size: csvSize },
+  ];
+  assert.equal(messages.length, 1);
+  assert.deepEqual(JSON.parse(messages[0].attachments_json ?? 'null'), expected);
+  assert.equal(messages[0].body_text, 'Your invoice is attached.');
+
+  const req = new Request(`https://mailgate.test/api/inbox/messages/${stored.id}`);
+  const res = await handlePublicApi(req, env, `/api/inbox/messages/${stored.id}`);
+  assert.ok(res);
+  assert.equal(res.status, 200);
+  const json = (await res.json()) as { ok: boolean; message: { attachments: unknown } };
+  assert.equal(json.ok, true);
+  assert.deepEqual(json.message.attachments, expected);
+});
+
+test('messages without attachments store NULL and expose an empty attachments array', async () => {
+  const { env, messages } = createMockEnv([{ email_address: 'e2e@example.com', is_active: 1 }]);
+  const raw = buildSimulatedRfc822({
+    to: 'e2e@example.com',
+    from: 'auth@acme.dev',
+    subject: 'Code 112233',
+    bodyText: 'Your verification code is 112233',
+  });
+
+  const stored = await ingestRawEmail(env, raw, 'e2e@example.com', 'auth@acme.dev');
+  assert.equal(stored.stored, true);
+  assert.equal(messages[0].attachments_json, null);
+
+  const res = await handlePublicApi(
+    new Request(`https://mailgate.test/api/inbox/messages/${stored.id}`),
+    env,
+    `/api/inbox/messages/${stored.id}`
+  );
+  assert.ok(res);
+  const json = (await res.json()) as { message: { attachments: unknown } };
+  assert.deepEqual(json.message.attachments, []);
+});
+
+test('summarizeAttachments keeps only metadata and parseAttachmentsJson tolerates legacy or bad data', () => {
+  assert.deepEqual(
+    summarizeAttachments([
+      { filename: '  report.PDF ', mimeType: 'Application/PDF', disposition: 'attachment', content: new Uint8Array(1234) },
+      { filename: null, mimeType: '', disposition: 'inline', content: new ArrayBuffer(7) },
+      { filename: 'note.txt', mimeType: 'text/plain', disposition: 'attachment', content: 'h\u00e9' },
+    ]),
+    [
+      { filename: 'report.PDF', mimeType: 'application/pdf', size: 1234 },
+      { filename: null, mimeType: 'application/octet-stream', size: 7 },
+      { filename: 'note.txt', mimeType: 'text/plain', size: 3 },
+    ]
+  );
+  assert.deepEqual(summarizeAttachments(undefined), []);
+
+  assert.deepEqual(parseAttachmentsJson(null), []);
+  assert.deepEqual(parseAttachmentsJson(undefined), []);
+  assert.deepEqual(parseAttachmentsJson('not json'), []);
+  assert.deepEqual(parseAttachmentsJson('{"filename":"x"}'), []);
+  assert.deepEqual(parseAttachmentsJson('[{"filename":"a.pdf","mimeType":"application/pdf","size":10}, 5]'), [
+    { filename: 'a.pdf', mimeType: 'application/pdf', size: 10 },
+  ]);
 });

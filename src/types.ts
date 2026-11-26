@@ -31,6 +31,13 @@ export interface MessageRow {
   otp_code: string | null;
   is_read: number;
   received_at: string;
+  attachments_json?: string | null;
+}
+
+export interface AttachmentSummary {
+  filename: string | null;
+  mimeType: string;
+  size: number;
 }
 
 export interface MessageSummary {

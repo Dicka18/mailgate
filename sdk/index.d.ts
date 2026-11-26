@@ -16,6 +16,13 @@ export interface MessageSummary {
   received_at: string;
 }
 
+export interface AttachmentSummary {
+  filename: string | null;
+  mimeType: string;
+  /** Decoded attachment size in bytes. */
+  size: number;
+}
+
 export interface FullMessage {
   id: string;
   recipient_email: string;
@@ -28,6 +35,8 @@ export interface FullMessage {
   verification_link: string | null;
   is_read: boolean;
   received_at: string;
+  /** Attachment metadata only; binaries are never stored. Empty for messages without attachments. */
+  attachments: AttachmentSummary[];
 }
 
 export interface LatestOtpResponse {

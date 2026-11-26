@@ -1,9 +1,12 @@
-import PostalMime from 'postal-mime';
-import type { Env } from '../types.ts';
+import PostalMime, { type Attachment } from 'postal-mime';
+import type { AttachmentSummary, Env } from '../types.ts';
 import { extractOtpCode, sanitizeEmailHtml, stripHtmlToText } from './otp.ts';
 
 const MAX_TEXT_CHARS = 180_000;
 const MAX_HTML_CHARS = 450_000;
+const MAX_ATTACHMENTS = 50;
+const MAX_ATTACHMENT_FILENAME_CHARS = 255;
+const MAX_ATTACHMENT_MIME_CHARS = 127;
 
 export function normalizeEmailAddress(raw: string): string {
   const trimmed = raw.trim().toLowerCase();
@@ -14,6 +17,46 @@ export function normalizeEmailAddress(raw: string): string {
 
 export function isValidEmailFormat(email: string): boolean {
   return /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]{2,}$/.test(email);
+}
+
+function attachmentByteSize(content: Attachment['content']): number {
+  if (typeof content === 'string') return new TextEncoder().encode(content).byteLength;
+  return content.byteLength;
+}
+
+/**
+ * Reduces parsed attachments to lightweight metadata so binaries never reach D1.
+ */
+export function summarizeAttachments(attachments: Attachment[] | undefined): AttachmentSummary[] {
+  return (attachments ?? []).slice(0, MAX_ATTACHMENTS).map((attachment) => {
+    const filename = (attachment.filename || '').trim().slice(0, MAX_ATTACHMENT_FILENAME_CHARS);
+    const mimeType = (attachment.mimeType || '').trim().toLowerCase().slice(0, MAX_ATTACHMENT_MIME_CHARS);
+    return {
+      filename: filename || null,
+      mimeType: mimeType || 'application/octet-stream',
+      size: attachmentByteSize(attachment.content),
+    };
+  });
+}
+
+/**
+ * Parses the stored `attachments_json` column, tolerating NULL (pre-migration rows) and bad data.
+ */
+export function parseAttachmentsJson(raw: string | null | undefined): AttachmentSummary[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+      .map((item) => ({
+        filename: typeof item.filename === 'string' ? item.filename : null,
+        mimeType: typeof item.mimeType === 'string' ? item.mimeType : 'application/octet-stream',
+        size: typeof item.size === 'number' && Number.isFinite(item.size) ? item.size : 0,
+      }));
+  } catch {
+    return [];
+  }
 }
 
 export interface IngestResult {
@@ -79,13 +122,15 @@ export async function ingestRawEmail(
   const bodyText = (rawText || stripHtmlToText(bodyHtml)).slice(0, MAX_TEXT_CHARS);
 
   const otpCode = extractOtpCode(subject, bodyText, bodyHtml);
+  const attachments = summarizeAttachments(parsed.attachments);
+  const attachmentsJson = attachments.length > 0 ? JSON.stringify(attachments) : null;
   const id = crypto.randomUUID();
   const receivedAt = new Date().toISOString();
 
   await env.DB.prepare(
     `INSERT INTO messages (
-      id, recipient_email, sender, sender_name, subject, body_text, body_html, otp_code, is_read, received_at
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9)`
+      id, recipient_email, sender, sender_name, subject, body_text, body_html, otp_code, is_read, received_at, attachments_json
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9, ?10)`
   )
     .bind(
       id,
@@ -96,7 +141,8 @@ export async function ingestRawEmail(
       bodyText,
       bodyHtml,
       otpCode,
-      receivedAt
+      receivedAt,
+      attachmentsJson
     )
     .run();
 

@@ -1,6 +1,6 @@
 import type { AllowedInboxRow, Env, MessageRow, MessageSummary } from '../types.ts';
 import { buildCookie, constantTimeEqual, signToken, verifyPassword, verifyToken } from '../lib/crypto.ts';
-import { isValidEmailFormat, normalizeEmailAddress } from '../lib/email-ingest.ts';
+import { isValidEmailFormat, normalizeEmailAddress, parseAttachmentsJson } from '../lib/email-ingest.ts';
 import { errorJson, getSessionSecret, isSecureRequest, json, readJson } from '../lib/http.ts';
 import { buildPreview, extractVerificationLink } from '../lib/otp.ts';
 
@@ -363,7 +363,7 @@ export async function handlePublicApi(
   if (singleMatch && request.method === 'GET') {
     const messageId = singleMatch[1];
     const row = await env.DB.prepare(
-      `SELECT id, recipient_email, sender, sender_name, subject, body_text, body_html, otp_code, is_read, received_at
+      `SELECT id, recipient_email, sender, sender_name, subject, body_text, body_html, otp_code, is_read, received_at, attachments_json
        FROM messages
        WHERE id = ?1
        LIMIT 1`
@@ -396,6 +396,7 @@ export async function handlePublicApi(
         verification_link: extractVerificationLink(row.body_text, row.body_html),
         is_read: true,
         received_at: row.received_at,
+        attachments: parseAttachmentsJson(row.attachments_json),
       },
     });
   }

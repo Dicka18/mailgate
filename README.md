@@ -184,7 +184,7 @@ OTP=$(MAILGATE_URL=https://mailgate.example.com npx -y mailgate-sdk otp e2e-auth
 | `POST` | `/api/inbox/open` | Authenticate an inbox (or admin account) and return `X-Inbox-Token` |
 | `GET` | `/api/inbox/messages` | List messages (`?email=&since=&sender=&limit=`) |
 | `GET` | `/api/inbox/latest-otp` | Return the latest `otpCode` and `verificationLink` (`?email=&since=&sender=`) |
-| `GET` | `/api/inbox/messages/:id` | Read full sanitized HTML/text body and mark as read |
+| `GET` | `/api/inbox/messages/:id` | Read full sanitized HTML/text body plus attachment metadata (`attachments: [{ filename, mimeType, size }]`) and mark as read |
 | `GET/POST` | `/api/admin/inboxes` | List or create allowlisted inboxes (`X-Admin-Token` or admin cookie) |
 | `PATCH/DELETE` | `/api/admin/inboxes/:id` | Update label/status/password or delete inbox (`?delete_messages=true`) |
 | `GET/DELETE` | `/api/admin/messages` | Inspect latest stored messages or clear by `?email=` |

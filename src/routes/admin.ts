@@ -12,6 +12,7 @@ import {
   ingestRawEmail,
   isValidEmailFormat,
   normalizeEmailAddress,
+  parseAttachmentsJson,
 } from '../lib/email-ingest.ts';
 import { errorJson, getSessionSecret, isSecureRequest, json, readJson } from '../lib/http.ts';
 import { buildPreview, extractVerificationLink } from '../lib/otp.ts';
@@ -350,7 +351,7 @@ export async function handleAdminApi(
   if (msgIdMatch && request.method === 'GET') {
     const msgId = msgIdMatch[1];
     const row = await env.DB.prepare(
-      `SELECT id, recipient_email, sender, sender_name, subject, body_text, body_html, otp_code, is_read, received_at
+      `SELECT id, recipient_email, sender, sender_name, subject, body_text, body_html, otp_code, is_read, received_at, attachments_json
        FROM messages
        WHERE id = ?1
        LIMIT 1`
@@ -376,6 +377,7 @@ export async function handleAdminApi(
         verification_link: extractVerificationLink(row.body_text, row.body_html),
         is_read: row.is_read === 1,
         received_at: row.received_at,
+        attachments: parseAttachmentsJson(row.attachments_json),
       },
     });
   }
