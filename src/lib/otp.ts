@@ -175,24 +175,34 @@ const BLOCKED_STANDALONE_TAGS = [
   'frameset',
 ] as const;
 
+function replaceUntilStable(input: string, pattern: RegExp, replacement: string): string {
+  let prev: string;
+  let current = input;
+  do {
+    prev = current;
+    current = current.replace(pattern, replacement);
+  } while (current !== prev);
+  return current;
+}
+
 export function sanitizeEmailHtml(html: string): string {
   if (!html) return '';
+  let prev: string;
   let clean = html;
-  for (let pass = 0; pass < 5; pass += 1) {
-    const prev = clean;
+  do {
+    prev = clean;
     clean = stripTagBlocks(clean, BLOCKED_CONTAINER_TAGS, '');
     clean = stripStandaloneTags(clean, BLOCKED_STANDALONE_TAGS);
-    clean = clean
-      .replace(/[\s/]on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-      .replace(/@import\s+[^;]{0,512};/gi, '')
-      .replace(/url\(\s*["']?\s*https?:\/\/[^)]{0,512}\)/gi, '')
-      .replace(/expression\s*\([^)]{0,512}\)/gi, '')
-      .replace(
-        /(href|src|action|formaction)\s*=\s*(["'])\s*(?:javascript|vbscript|data\s*:\s*text\/html):[^"']{0,2048}\2/gi,
-        '$1=$2#$2'
-      );
-    if (clean === prev) break;
-  }
+    clean = replaceUntilStable(clean, /[\s/]on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, ' ');
+    clean = replaceUntilStable(clean, /@import\s+[^;]{0,512};/gi, ' ');
+    clean = replaceUntilStable(clean, /url\(\s*["']?\s*https?:\/\/[^)]{0,512}\)/gi, ' ');
+    clean = replaceUntilStable(clean, /expression\s*\([^)]{0,512}\)/gi, ' ');
+    clean = replaceUntilStable(
+      clean,
+      /(href|src|action|formaction)\s*=\s*(["'])\s*(?:javascript|vbscript|data\s*:\s*text\/html):[^"']{0,2048}\2/gi,
+      '$1=$2#$2'
+    );
+  } while (clean !== prev);
   return clean;
 }
 
