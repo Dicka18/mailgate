@@ -2,42 +2,198 @@
  * OTP & verification link extraction plus defensive HTML sanitization.
  */
 
+const HTML_ENTITY_MAP: Record<string, string> = {
+  nbsp: ' ',
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  '#39': "'",
+};
+
+function decodeHtmlEntitiesOnce(input: string): string {
+  return input.replace(/&(nbsp|amp|lt|gt|quot|#39);/gi, (match, key: string) => {
+    const mapped = HTML_ENTITY_MAP[key.toLowerCase()];
+    return mapped ?? match;
+  });
+}
+
+function isTagNameDelimiter(ch: string | undefined): boolean {
+  return ch === undefined || ch === '>' || ch === '/' || /\s/.test(ch);
+}
+
+/**
+ * Strips full `<tag ...>...</tag>` blocks using linear index scanning instead of
+ * regex tag filters, handling whitespace or junk inside closing tags safely.
+ */
+function stripTagBlocks(html: string, tagNames: readonly string[], replacement: string): string {
+  let current = html;
+  for (let pass = 0; pass < 5; pass += 1) {
+    const lower = current.toLowerCase();
+    let changed = false;
+    let cursor = 0;
+    let out = '';
+
+    while (cursor < current.length) {
+      const lt = lower.indexOf('<', cursor);
+      if (lt === -1) {
+        out += current.slice(cursor);
+        break;
+      }
+
+      let matchedTag: string | null = null;
+      for (const tag of tagNames) {
+        if (lower.startsWith(tag, lt + 1) && isTagNameDelimiter(lower[lt + 1 + tag.length])) {
+          matchedTag = tag;
+          break;
+        }
+      }
+
+      if (!matchedTag) {
+        out += current.slice(cursor, lt + 1);
+        cursor = lt + 1;
+        continue;
+      }
+
+      out += current.slice(cursor, lt) + replacement;
+      changed = true;
+
+      const openEnd = lower.indexOf('>', lt + 1 + matchedTag.length);
+      if (openEnd === -1) {
+        cursor = current.length;
+        break;
+      }
+
+      // Scan forward for a matching `</tag ...>` closing tag
+      const closePrefix = `</${matchedTag}`;
+      let searchFrom = openEnd + 1;
+      let closeEnd = -1;
+      while (searchFrom < lower.length) {
+        const closeStart = lower.indexOf(closePrefix, searchFrom);
+        if (closeStart === -1) break;
+        const afterName = closeStart + closePrefix.length;
+        if (isTagNameDelimiter(lower[afterName])) {
+          const gt = lower.indexOf('>', afterName);
+          closeEnd = gt === -1 ? current.length : gt + 1;
+          break;
+        }
+        searchFrom = afterName;
+      }
+
+      cursor = closeEnd === -1 ? openEnd + 1 : closeEnd;
+    }
+
+    current = out;
+    if (!changed) break;
+  }
+  return current;
+}
+
+/**
+ * Strips standalone/void dangerous tags (e.g. `<embed ...>`, `<meta ...>`) safely.
+ */
+function stripStandaloneTags(html: string, tagNames: readonly string[]): string {
+  const lower = html.toLowerCase();
+  let cursor = 0;
+  let out = '';
+
+  while (cursor < html.length) {
+    const lt = lower.indexOf('<', cursor);
+    if (lt === -1) {
+      out += html.slice(cursor);
+      break;
+    }
+
+    const isClosing = lower[lt + 1] === '/';
+    const nameStart = isClosing ? lt + 2 : lt + 1;
+    let matched = false;
+    for (const tag of tagNames) {
+      if (lower.startsWith(tag, nameStart) && isTagNameDelimiter(lower[nameStart + tag.length])) {
+        matched = true;
+        break;
+      }
+    }
+
+    if (!matched) {
+      out += html.slice(cursor, lt + 1);
+      cursor = lt + 1;
+      continue;
+    }
+
+    out += html.slice(cursor, lt);
+    const gt = lower.indexOf('>', nameStart);
+    cursor = gt === -1 ? html.length : gt + 1;
+  }
+
+  return out;
+}
+
+/**
+ * Removes all remaining HTML tags linearly without regex backtracking.
+ */
+function stripAllTags(html: string): string {
+  let out = '';
+  let inTag = false;
+  for (let i = 0; i < html.length; i += 1) {
+    const ch = html[i];
+    if (ch === '<') {
+      inTag = true;
+      out += ' ';
+    } else if (ch === '>') {
+      inTag = false;
+    } else if (!inTag) {
+      out += ch;
+    }
+  }
+  return out;
+}
+
 export function stripHtmlToText(html: string): string {
   if (!html) return '';
-  return html
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+  let text = stripTagBlocks(html, ['style', 'script'], ' ');
+  text = text
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
+    .replace(/<\/(?:p|div|li|tr|h[1-6])\s*>/gi, '\n');
+  text = stripAllTags(text);
+  text = decodeHtmlEntitiesOnce(text);
+  return text
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
+const BLOCKED_CONTAINER_TAGS = ['script', 'iframe', 'object', 'applet', 'form'] as const;
+const BLOCKED_STANDALONE_TAGS = [
+  'embed',
+  'base',
+  'meta',
+  'link',
+  'input',
+  'textarea',
+  'button',
+  'frame',
+  'frameset',
+] as const;
+
 export function sanitizeEmailHtml(html: string): string {
   if (!html) return '';
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
-    .replace(/<object[\s\S]*?<\/object>/gi, '')
-    .replace(/<applet[\s\S]*?<\/applet>/gi, '')
-    .replace(/<form[\s\S]*?<\/form>/gi, '')
-    .replace(/<(embed|base|meta|link|input|textarea|button|frame|frameset)[^>]*>/gi, '')
-    .replace(/\son[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-    .replace(/@import\s+[^;]+;/gi, '')
-    .replace(/url\(\s*["']?\s*https?:\/\/[^)]+\)/gi, '')
-    .replace(/expression\s*\([^)]*\)/gi, '')
-    .replace(
-      /(href|src|action|formaction)\s*=\s*(["'])\s*(?:javascript|vbscript|data\s*:\s*text\/html):[^"']*\2/gi,
-      '$1=$2#$2'
-    );
+  let clean = html;
+  for (let pass = 0; pass < 5; pass += 1) {
+    const prev = clean;
+    clean = stripTagBlocks(clean, BLOCKED_CONTAINER_TAGS, '');
+    clean = stripStandaloneTags(clean, BLOCKED_STANDALONE_TAGS);
+    clean = clean
+      .replace(/[\s/]on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      .replace(/@import\s+[^;]{0,512};/gi, '')
+      .replace(/url\(\s*["']?\s*https?:\/\/[^)]{0,512}\)/gi, '')
+      .replace(/expression\s*\([^)]{0,512}\)/gi, '')
+      .replace(
+        /(href|src|action|formaction)\s*=\s*(["'])\s*(?:javascript|vbscript|data\s*:\s*text\/html):[^"']{0,2048}\2/gi,
+        '$1=$2#$2'
+      );
+    if (clean === prev) break;
+  }
+  return clean;
 }
 
 function isLikelyYear(code: string): boolean {
@@ -50,9 +206,9 @@ export function extractOtpCode(subject: string, bodyText: string, bodyHtml = '')
   const plainBody = bodyText?.trim() ? bodyText : stripHtmlToText(bodyHtml);
   const combined = `${subject}\n${plainBody}`;
 
-  // 1. Explicit OTP / verification keyword patterns (English & Indonesian)
+  // 1. Explicit OTP / verification keyword patterns (English & Indonesian, linear-time regex)
   const keywordPatterns: RegExp[] = [
-    /(?:verification\s+code|security\s+code|one-time\s+(?:code|passcode|password|token|pin)|login\s+(?:code|token)|confirmation\s+code|passcode|otp(?:\s+code)?|pin\s+code|kode\s+(?:verifikasi|otp|keamanan|masuk|login|konfirmasi))(?:[\s:=\-–—]+(?:is|are|adalah|yaitu|anda|your|berikut|ini)?)*[\s:=\-–—]*(\d{3}[-\s]\d{3}|\d{4,8})\b/i,
+    /(?:verification\s+code|security\s+code|one-time\s+(?:code|passcode|password|token|pin)|login\s+(?:code|token)|confirmation\s+code|passcode|otp(?:\s+code)?|pin\s+code|kode\s+(?:verifikasi|otp|keamanan|masuk|login|konfirmasi))(?:[\s:=\-\u2013\u2014]{1,4}(?:is|are|adalah|yaitu|anda|your|berikut|ini)){0,3}[\s:=\-\u2013\u2014]{0,6}(\d{3}[-\s]\d{3}|\d{4,8})\b/i,
     /\b(\d{3}[-\s]\d{3}|\d{4,8})\b[^\n]{0,40}(?:is\s+your\s+(?:verification|security|login|otp|confirmation)|expires\s+in|adalah\s+kode|berlaku\s+selama)/i,
   ];
 

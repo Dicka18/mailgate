@@ -70,7 +70,11 @@ export class MailGateClient {
     if (!options?.baseUrl) {
       throw new Error('MailGateClient requires a non-empty `baseUrl`.');
     }
-    this.baseUrl = options.baseUrl.replace(/\/+$/, '');
+    let normalizedBase = String(options.baseUrl).trim();
+    while (normalizedBase.endsWith('/')) {
+      normalizedBase = normalizedBase.slice(0, -1);
+    }
+    this.baseUrl = normalizedBase;
     this.adminToken = options.adminToken?.trim() || undefined;
     this._fetch = options.fetch ?? globalThis.fetch.bind(globalThis);
     /** @type {Map<string, string>} */

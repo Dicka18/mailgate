@@ -10,9 +10,10 @@ const MAX_ATTACHMENT_MIME_CHARS = 127;
 
 export function normalizeEmailAddress(raw: string): string {
   const trimmed = raw.trim().toLowerCase();
-  const angleMatch = trimmed.match(/<([^>]+)>/);
-  const extracted = angleMatch ? angleMatch[1].trim() : trimmed;
-  return extracted.replace(/^mailto:/, '').trim();
+  const openIdx = trimmed.indexOf('<');
+  const closeIdx = openIdx >= 0 ? trimmed.indexOf('>', openIdx + 1) : -1;
+  const extracted = closeIdx > openIdx + 1 ? trimmed.slice(openIdx + 1, closeIdx).trim() : trimmed;
+  return extracted.startsWith('mailto:') ? extracted.slice(7).trim() : extracted;
 }
 
 export function isValidEmailFormat(email: string): boolean {
