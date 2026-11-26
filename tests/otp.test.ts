@@ -84,6 +84,58 @@ test('sanitizeEmailHtml strips scripts, iframes, inline handlers, javascript: UR
   assert.ok(clean.includes('Hello'));
 });
 
+test('extractOtpCode extracts Slack workspace confirmation codes', () => {
+  assert.equal(
+    extractOtpCode('Slack workspace verification', 'Your workspace confirmation code is ABC-123.'),
+    'ABC123'
+  );
+  assert.equal(
+    extractOtpCode('Slack workspace verification', 'Use this code to join workspace: XYZ-789'),
+    'XYZ789'
+  );
+});
+
+test('extractOtpCode extracts Discord security verification codes', () => {
+  assert.equal(
+    extractOtpCode('Discord security verification', 'Your security code is 741-852.'),
+    '741852'
+  );
+  assert.equal(
+    extractOtpCode('Discord security verification', 'Your Discord security code is 963-258'),
+    '963258'
+  );
+});
+
+test('extractOtpCode extracts AWS Cognito verification codes', () => {
+  assert.equal(
+    extractOtpCode('Your Amazon Cognito code', 'Your code is 852456. Please enter it now.'),
+    '852456'
+  );
+  assert.equal(
+    extractOtpCode('Amazon Cognito verification', 'Your verification code: 159753'),
+    '159753'
+  );
+});
+
+test('extractOtpCode extracts Supabase magic sign-in codes', () => {
+  assert.equal(
+    extractOtpCode('Sign in to Supabase', 'Your sign-in code is 456123. This code will expire in 5 minutes.'),
+    '456123'
+  );
+  assert.equal(
+    extractOtpCode('Supabase authentication', 'Your authentication code is 789456'),
+    '789456'
+  );
+});
+
+test('extractVerificationLink extracts Supabase magic links', () => {
+  const body = 'Click here to sign in: https://app.supabase.com/auth/v1/verify?token=magic_xyz123';
+  assert.equal(
+    extractVerificationLink(body),
+    'https://app.supabase.com/auth/v1/verify?token=magic_xyz123'
+  );
+});
+
 test('stripHtmlToText and buildPreview normalize whitespace and decode entities', () => {
   const text = stripHtmlToText('<p>Hello &amp; welcome<br/>to <strong>MailGate</strong>!</p>');
   assert.equal(text, 'Hello & welcome\nto MailGate !');
