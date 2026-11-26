@@ -6,6 +6,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/mailgate-sdk?color=0f766e)](https://www.npmjs.com/package/mailgate-sdk)
 [![License: MIT](https://img.shields.io/badge/License-MIT-0f766e.svg)](./LICENSE)
 [![Release](https://img.shields.io/github/v/release/Dicka18/mailgate?color=0f766e)](https://github.com/Dicka18/mailgate/releases)
+[![Dicka18/mailgate MCP server](https://glama.ai/mcp/servers/Dicka18/mailgate/badges/score.svg)](https://glama.ai/mcp/servers/Dicka18/mailgate)
 
 Self-hosted, receive-only email and OTP inbox running on Cloudflare Email Routing, Workers, and D1.
 
