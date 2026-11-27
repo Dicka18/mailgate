@@ -62,6 +62,56 @@ function normalizeSince(value) {
   return String(value);
 }
 
+/**
+ * Verifies a MailGate webhook signature and rejects timestamps outside the replay window.
+ * @param {{ rawBody: string; signature: string; timestamp: string; secret: string; maxDriftSeconds?: number }} options
+ * @returns {Promise<boolean>}
+ */
+export async function verifyMailGateWebhook(options) {
+  const { rawBody, signature, timestamp, secret, maxDriftSeconds = 300 } = options ?? {};
+  if (
+    typeof rawBody !== 'string' ||
+    typeof signature !== 'string' ||
+    typeof timestamp !== 'string' ||
+    typeof secret !== 'string' ||
+    secret.length === 0 ||
+    !Number.isFinite(maxDriftSeconds) ||
+    maxDriftSeconds < 0 ||
+    !/^\d+$/.test(timestamp)
+  ) {
+    return false;
+  }
+
+  const timestampSeconds = Number(timestamp);
+  if (
+    !Number.isSafeInteger(timestampSeconds) ||
+    Math.abs(Math.floor(Date.now() / 1000) - timestampSeconds) > maxDriftSeconds
+  ) {
+    return false;
+  }
+
+  const normalizedSignature = signature.trim();
+  if (!/^[\da-f]{64}$/i.test(normalizedSignature)) return false;
+
+  const encoder = new TextEncoder();
+  const key = await globalThis.crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['verify']
+  );
+  const signatureBytes = new Uint8Array(
+    normalizedSignature.match(/.{2}/g).map((byte) => Number.parseInt(byte, 16))
+  );
+  return globalThis.crypto.subtle.verify(
+    'HMAC',
+    key,
+    signatureBytes,
+    encoder.encode(`${timestamp}.${rawBody}`)
+  );
+}
+
 export class MailGateClient {
   /**
    * @param {{ baseUrl: string; adminToken?: string; fetch?: typeof globalThis.fetch }} options

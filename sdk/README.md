@@ -138,7 +138,30 @@ console.log(msg.verification_link);
 
 ---
 
-## 5. CLI Usage (CI Shell Scripts)
+## 5. Webhook Signature Verification
+
+Verify the exact raw request body before parsing its JSON. The default replay window is 300 seconds.
+
+```js
+import { verifyMailGateWebhook } from 'mailgate-sdk';
+
+const rawBody = await request.text();
+const isValid = await verifyMailGateWebhook({
+  rawBody,
+  signature: request.headers.get('X-Ingest-Signature') ?? '',
+  timestamp: request.headers.get('X-Ingest-Timestamp') ?? '',
+  secret: process.env.MAILGATE_INGEST_SECRET,
+});
+
+if (!isValid) throw new Error('Invalid MailGate webhook signature');
+const payload = JSON.parse(rawBody);
+```
+
+Pass `maxDriftSeconds` to use a different replay window.
+
+---
+
+## 6. CLI Usage (CI Shell Scripts)
 
 ```bash
 export MAILGATE_URL=https://mailgate.example.com
