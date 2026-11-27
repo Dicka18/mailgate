@@ -12,8 +12,9 @@ import { MailGateClient } from './index.mjs';
  * @param {{ baseUrl?: string; adminToken?: string; defaultEmail?: string; defaultPassword?: string }} [options]
  */
 export function addMailGateCommands(Cypress, options = {}) {
-  const baseUrl = options.baseUrl ?? Cypress.env?.('MAILGATE_URL') ?? process.env.MAILGATE_URL;
-  const adminToken = options.adminToken ?? Cypress.env?.('MAILGATE_ADMIN_TOKEN') ?? process.env.MAILGATE_ADMIN_TOKEN;
+  const env = typeof process !== 'undefined' ? process.env : undefined;
+  const baseUrl = options.baseUrl ?? Cypress.env?.('MAILGATE_URL') ?? env?.MAILGATE_URL;
+  const adminToken = options.adminToken ?? Cypress.env?.('MAILGATE_ADMIN_TOKEN') ?? env?.MAILGATE_ADMIN_TOKEN;
   if (!baseUrl) {
     throw new Error('addMailGateCommands requires `options.baseUrl` or MAILGATE_URL.');
   }
