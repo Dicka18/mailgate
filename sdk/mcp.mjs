@@ -96,6 +96,20 @@ const TOOLS = [
     },
   },
   {
+    name: 'mailgate_get_message',
+    description: 'Read a full stored message by ID, including attachment metadata.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        email: { type: 'string', description: 'Recipient inbox address.' },
+        messageId: { type: 'string', description: 'Message ID returned by mailgate_list_messages.' },
+        password: { type: 'string', description: 'Optional inbox password if the inbox is locked.' },
+      },
+      required: ['email', 'messageId'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'mailgate_create_inbox',
     description: 'Allowlist a new inbox address on MailGate (requires MAILGATE_ADMIN_TOKEN).',
     inputSchema: {
@@ -156,6 +170,13 @@ function toolResult(data, isError = false) {
   };
 }
 
+/**
+ * Calls an MCP tool through the configured MailGate client.
+ * @param {MailGateClient} client Configured MailGate SDK client.
+ * @param {string} name MCP tool name.
+ * @param {any} [args={}] Arguments supplied by the MCP client.
+ * @returns {Promise<object>} MCP tool result.
+ */
 async function callTool(client, name, args = {}) {
   switch (name) {
     case 'mailgate_health':
@@ -211,6 +232,26 @@ async function callTool(client, name, args = {}) {
         limit: typeof args.limit === 'number' ? args.limit : 20,
       });
       return toolResult({ count: messages.length, messages });
+    }
+
+    case 'mailgate_get_message': {
+      if (!args.email) return toolResult('Missing required argument: email', true);
+      if (!args.messageId) return toolResult('Missing required argument: messageId', true);
+      const msg = await client.getMessage(String(args.messageId), {
+        email: String(args.email),
+        password: args.password ? String(args.password) : undefined,
+      });
+      return toolResult({
+        id: msg.id,
+        sender: msg.sender,
+        sender_name: msg.sender_name,
+        subject: msg.subject,
+        otp_code: msg.otp_code,
+        verification_link: msg.verification_link,
+        received_at: msg.received_at,
+        body_text: msg.body_text,
+        attachments: msg.attachments,
+      });
     }
 
     case 'mailgate_create_inbox': {

@@ -46,6 +46,7 @@ claude mcp add mailgate \
 - `mailgate_wait_for_otp`: poll until a fresh OTP code arrives (`email`, optional `since`, `sender`, `password`, `timeoutMs`)
 - `mailgate_wait_for_email`: wait for a full email and return `body_text`, `otp_code`, and `verification_link`
 - `mailgate_list_messages`: list recent messages in an inbox
+- `mailgate_get_message`: read a message by ID, including its full text body and attachment metadata
 - `mailgate_create_inbox`: allowlist a new inbox (`MAILGATE_ADMIN_TOKEN` required)
 - `mailgate_clear_messages`: purge stored messages before a fresh test (`MAILGATE_ADMIN_TOKEN` required)
 - `mailgate_simulate_email`: inject a simulated RFC822 message (`MAILGATE_ADMIN_TOKEN` required)
