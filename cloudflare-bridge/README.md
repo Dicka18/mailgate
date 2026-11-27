@@ -38,17 +38,20 @@ Every `POST` request sends:
 ### Verifying the Signature (Node.js)
 
 ```js
-import crypto from 'node:crypto';
+import { verifyMailGateWebhook } from 'mailgate-sdk';
 
-export function verifyMailGateWebhook(secret, timestamp, rawBody, signature) {
-  const ageSec = Math.abs(Math.floor(Date.now() / 1000) - Number(timestamp));
-  if (!Number.isFinite(ageSec) || ageSec > 300) return false;
-  const expected = crypto
-    .createHmac('sha256', secret)
-    .update(`${timestamp}.${rawBody}`)
-    .digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
-}
+const rawBody = await request.text();
+const isValid = await verifyMailGateWebhook({
+  rawBody,
+  signature: request.headers.get('X-Ingest-Signature') ?? '',
+  timestamp: request.headers.get('X-Ingest-Timestamp') ?? '',
+  secret: process.env.MAILGATE_INGEST_SECRET,
+});
+
+if (!isValid) throw new Error('Invalid MailGate webhook signature');
+const payload = JSON.parse(rawBody);
 ```
+
+Read the raw body before parsing JSON so it matches the signed payload.
 
 If your webhook responds with HTTP `403`, the Worker rejects the email at the SMTP layer via `message.setReject(...)`.

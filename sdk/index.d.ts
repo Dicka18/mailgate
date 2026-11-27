@@ -1,3 +1,13 @@
+export interface VerifyMailGateWebhookOptions {
+  rawBody: string;
+  signature: string;
+  timestamp: string;
+  secret: string;
+  maxDriftSeconds?: number;
+}
+
+export function verifyMailGateWebhook(options: VerifyMailGateWebhookOptions): Promise<boolean>;
+
 export interface MailGateClientOptions {
   baseUrl: string;
   adminToken?: string;

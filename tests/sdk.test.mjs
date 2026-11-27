@@ -1,7 +1,75 @@
 import assert from 'node:assert/strict';
+import { createHmac } from 'node:crypto';
 import http from 'node:http';
 import test from 'node:test';
-import { MailGateClient, MailGateError, MailGateTimeoutError } from '../sdk/index.mjs';
+import {
+  MailGateClient,
+  MailGateError,
+  MailGateTimeoutError,
+  verifyMailGateWebhook,
+} from '../sdk/index.mjs';
+
+/**
+ * Creates a signature using the MailGate webhook signing format.
+ * @param {string} secret Shared webhook secret.
+ * @param {string} timestamp Unix timestamp in seconds.
+ * @param {string} rawBody Exact request body string.
+ * @returns {string} HMAC-SHA256 signature in hexadecimal.
+ */
+function signWebhookPayload(secret, timestamp, rawBody) {
+  return createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');
+}
+
+/**
+ * Verifies valid, tampered, malformed, and expired MailGate webhook signatures.
+ * @returns {Promise<void>}
+ */
+async function testVerifyMailGateWebhook() {
+  const secret = 'webhook-shared-secret';
+  const rawBody = JSON.stringify({ to: 'otp@example.com', subject: 'Code 123456' });
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const timestamp = String(nowSeconds);
+  const signature = signWebhookPayload(secret, timestamp, rawBody);
+
+  assert.equal(await verifyMailGateWebhook({ rawBody, signature, timestamp, secret }), true);
+  assert.equal(
+    await verifyMailGateWebhook({ rawBody: `${rawBody} `, signature, timestamp, secret }),
+    false
+  );
+  assert.equal(
+    await verifyMailGateWebhook({
+      rawBody,
+      signature: `${signature.slice(0, -1)}${signature.endsWith('0') ? '1' : '0'}`,
+      timestamp,
+      secret,
+    }),
+    false
+  );
+  assert.equal(await verifyMailGateWebhook({ rawBody, signature: 'bad', timestamp, secret }), false);
+
+  const expiredTimestamp = String(nowSeconds - 301);
+  const expiredSignature = signWebhookPayload(secret, expiredTimestamp, rawBody);
+  assert.equal(
+    await verifyMailGateWebhook({ rawBody, signature: expiredSignature, timestamp: expiredTimestamp, secret }),
+    false
+  );
+
+  const shortWindowTimestamp = String(nowSeconds - 30);
+  const shortWindowSignature = signWebhookPayload(secret, shortWindowTimestamp, rawBody);
+  assert.equal(
+    await verifyMailGateWebhook({
+      rawBody,
+      signature: shortWindowSignature,
+      timestamp: shortWindowTimestamp,
+      secret,
+      maxDriftSeconds: 10,
+    }),
+    false
+  );
+  assert.equal(await verifyMailGateWebhook({ rawBody, signature, timestamp: 'invalid', secret }), false);
+}
+
+test('verifyMailGateWebhook validates HMAC and replay window', testVerifyMailGateWebhook);
 
 function startMockMailGateServer() {
   let otpPolls = 0;
