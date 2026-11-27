@@ -9,6 +9,10 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI_PATH = path.resolve(__dirname, '../sdk/cli.mjs');
 
+/**
+ * Starts an HTTP mock for the MailGate MCP integration test.
+ * @returns {Promise<{ baseUrl: string, getLastAdminToken: () => string, close: () => Promise<void> }>}
+ */
 function startMockServer() {
   let lastAdminToken = '';
   const server = http.createServer((req, res) => {
@@ -69,6 +73,7 @@ function startMockServer() {
           body_html: '',
           otp_code: null,
           verification_link: 'https://app.example.com/magic?tok=abc',
+          attachments: [{ filename: 'invoice.pdf', mimeType: 'application/pdf', size: 1024 }],
           is_read: true,
           received_at: new Date().toISOString(),
         },
@@ -96,7 +101,11 @@ function startMockServer() {
   });
 }
 
-test('MailGate MCP stdio server handles initialize, tools/list, and tools/call end-to-end', async () => {
+/**
+ * Verifies the MCP stdio tools against the local HTTP mock.
+ * @returns {Promise<void>}
+ */
+async function testMcpStdioServer() {
   const srv = await startMockServer();
   const child = spawn(process.execPath, [CLI_PATH, 'mcp'], {
     env: {
@@ -138,9 +147,11 @@ test('MailGate MCP stdio server handles initialize, tools/list, and tools/call e
 
     const list = await rpc(2, 'tools/list');
     const names = list.result.tools.map((t) => t.name);
-    assert.equal(names.length, 7);
+    assert.equal(names.length, 8);
     assert.ok(names.includes('mailgate_wait_for_otp'));
     assert.ok(names.includes('mailgate_wait_for_email'));
+    const getMessageTool = list.result.tools.find((t) => t.name === 'mailgate_get_message');
+    assert.deepEqual(getMessageTool.inputSchema.required, ['email', 'messageId']);
 
     const otpCall = await rpc(3, 'tools/call', {
       name: 'mailgate_wait_for_otp',
@@ -158,22 +169,46 @@ test('MailGate MCP stdio server handles initialize, tools/list, and tools/call e
     const emailData = JSON.parse(emailCall.result.content[0].text);
     assert.equal(emailData.verification_link, 'https://app.example.com/magic?tok=abc');
 
-    const simCall = await rpc(5, 'tools/call', {
+    const messageCall = await rpc(5, 'tools/call', {
+      name: 'mailgate_get_message',
+      arguments: { email: 'qa@example.com', messageId: 'm2' },
+    });
+    assert.equal(messageCall.result.isError, undefined);
+    const messageData = JSON.parse(messageCall.result.content[0].text);
+    assert.equal(messageData.subject, 'Sign in link');
+    assert.equal(messageData.sender, 'auth@example.com');
+    assert.equal(messageData.otp_code, null);
+    assert.equal(messageData.body_text, 'Open https://app.example.com/magic?tok=abc');
+    assert.equal(messageData.verification_link, 'https://app.example.com/magic?tok=abc');
+    assert.equal(typeof messageData.received_at, 'string');
+    assert.deepEqual(messageData.attachments, [
+      { filename: 'invoice.pdf', mimeType: 'application/pdf', size: 1024 },
+    ]);
+
+    const simCall = await rpc(6, 'tools/call', {
       name: 'mailgate_simulate_email',
       arguments: { to: 'qa@example.com' },
     });
     assert.equal(srv.getLastAdminToken(), 'adm-secret-token');
     assert.equal(JSON.parse(simCall.result.content[0].text).result.otpCode, '334455');
 
-    const badCall = await rpc(6, 'tools/call', {
+    const badCall = await rpc(7, 'tools/call', {
       name: 'mailgate_wait_for_otp',
       arguments: {},
     });
     assert.equal(badCall.result.isError, true);
+
+    const missingMessageIdCall = await rpc(8, 'tools/call', {
+      name: 'mailgate_get_message',
+      arguments: { email: 'qa@example.com' },
+    });
+    assert.equal(missingMessageIdCall.result.isError, true);
   } finally {
     child.stdin.end();
     child.kill();
     rl.close();
     await srv.close();
   }
-});
+}
+
+test('MailGate MCP stdio server handles initialize, tools/list, and tools/call end-to-end', testMcpStdioServer);
